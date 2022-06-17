@@ -1,0 +1,27 @@
+[gd_scene load_steps=4 format=2]
+
+[ext_resource path="res://Lander.tscn" type="PackedScene" id=1]
+[ext_resource path="res://Terrain.tscn" type="PackedScene" id=2]
+[ext_resource path="res://scripts/UI.cs" type="Script" id=3]
+
+[node name="Node2D" type="Node2D"]
+
+[node name="Lander" parent="." instance=ExtResource( 1 )]
+position = Vector2( -23, -553 )
+mass = 2.64
+continuous_cd = 1
+contacts_reported = 12
+linear_damp = 0.0
+angular_damp = -0.2
+
+[node name="Terrain" parent="." instance=ExtResource( 2 )]
+position = Vector2( 0, -2 )
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="UI" type="Control" parent="CanvasLayer"]
+script = ExtResource( 3 )
+
+[node name="Area2D" type="Area2D" parent="."]
+
+[connection signal="body_entered" from="Lander" to="Lander" method="_on_body_entered"]
