@@ -32,13 +32,19 @@ public class Lander : RigidBody2D
     private Vector2 _thrust = new Vector2(0, -250);
     private float _torque = 2000;
 
+
+    //Historical physics 
+
+    public float lastVelocity;
+    public bool lastCollisionUpright = false;
+
     //Model properties
     public int Fuel { get; internal set; }
     public bool Crashed = false;
     public bool Landed = false;
     private int crashSpeed = 30;
     public int Height { get; internal set; }
-    public int Score = 1000;
+    public int Score = 100000;
     public Lander()
     {
         GameManager.GetInstance().RegisterLander(this);
@@ -94,6 +100,7 @@ public class Lander : RigidBody2D
             }
         }
     }
+
     public override void _Ready()
     {
         if (!Engine.EditorHint)
@@ -102,15 +109,17 @@ public class Lander : RigidBody2D
 
             //Set initial conditions
             LinearVelocity = new Vector2(100, 0);
+            lastVelocity = LinearVelocity.Length();
             Fuel = 1000;
             Height = 100;
             Crashed = false;
+
         }
     }
 
     public override void _PhysicsProcess(float delta)
     {
-        base._Process(delta);
+        base._PhysicsProcess(delta);
 
 
         if (!Crashed && !Landed)
@@ -130,40 +139,50 @@ public class Lander : RigidBody2D
             if (Input.IsActionPressed("restart"))
             {
                 CleanUpOrphans();
+                GD.Print("New game");
                 GetTree().ReloadCurrentScene();
             }
             if (Input.IsActionPressed("quit"))
             {
                 CleanUpOrphans();
                 GC.Collect();
+                GD.Print("Quit");
                 GetTree().Quit();
             }
+        }
+    }
 
+    private void CheckIfLanded()
+    {
+        // use global coordinates, not local to node
+        var spaceState = GetWorld2d().DirectSpaceState;
+        var collides_zone = spaceState.IntersectRay(Position, Position + new Vector2(0, 21), collideWithAreas: true, collideWithBodies: false);
+        if (collides_zone.Count > 0)
+        {
+            object collided = collides_zone["collider"];
+            GD.Print("Collided with " + collided.GetType().Name);
 
-            //Measure distance above surface
-
-            var spaceState = GetWorld2d().DirectSpaceState;
-            // use global coordinates, not local to node
-            var result = spaceState.IntersectRay(Position, Position + new Vector2(0, 2000), new Godot.Collections.Array { this });
-
-            var collides_zone = spaceState.IntersectRay(Position, Position + new Vector2(0, 10), collideWithAreas: true, collideWithBodies: false);
-            if (collides_zone.Count > 0)
+            //Ensure we haven't crashed or already landed, and speed is low
+            if (collided is LandingZone zone && !Crashed && !Landed && LinearVelocity.Length() < 5)
             {
-                object collided = collides_zone["collider"];
-
-                if (collided is LandingZone zone && zone != null && !Crashed)
-                {
-                    Landed = true;
-                    EndGame();
-                }
+                Landed = true;
+                Score = Score * zone.multiplier;
+                EndGame();
             }
+        }
+    }
 
-            if (result.Count > 0)
-            {
-                Vector2 ground = (Vector2)result["position"];
-                Vector2 heightVec = ground - Position;
-                Height = ((int)heightVec.y) - 20;
-            }           
+    private void SetDistanceAboveGround()
+    {
+        var spaceState = GetWorld2d().DirectSpaceState;
+
+
+        var result = spaceState.IntersectRay(Position, Position + new Vector2(0, 2000), new Godot.Collections.Array { this });
+        if (result.Count > 0)
+        {
+            Vector2 ground = (Vector2)result["position"];
+            Vector2 heightVec = ground - Position;
+            Height = ((int)heightVec.y) - 20;
         }
     }
 
@@ -179,6 +198,12 @@ public class Lander : RigidBody2D
     {
         if (!Engine.EditorHint)
         {
+            //Measure distance above surface
+            SetDistanceAboveGround();
+
+            //Check if we're in landing zone
+            CheckIfLanded();
+
             if (Input.IsActionPressed("up") && Fuel > 0)
             {
                 AppliedForce = _thrust.Rotated(Rotation);
@@ -217,42 +242,118 @@ public class Lander : RigidBody2D
             }
 
             this.AppliedTorque = rotationDir * _torque;
-        }
-    }
 
-    public void _on_body_entered(Node other)
-    {
-        if (other is Terrain terrain)
-        {
-            if (LinearVelocity.Length() > crashSpeed)
+
+            //We don't need to check collisions if we just trust the physics engine and check if our speed changed by a lot
+            //But we're checking them here so we can tell the relative between the ship and the ground
+            //if (GetCollidingBodies().Count > 0)
+            //{
+            //    //GD.Print("Im touching bodies : " + state.GetContactCount() + " and " + GetCollidingBodies().Count);
+            //    if (GetCollidingBodies()[0] is Terrain terrain)
+            //    {
+            //        if (state.GetContactCount() > 0)
+            //        {
+            //            Vector2 normal = state.GetContactLocalNormal(0);
+            //            //GD.Print("Angle " + toDeg(normal.Angle()));
+
+            //            //Keep track of the angle of our last collision
+            //            lastCollisionUpright = ShipIsUpright(normal);
+            //        }
+            //    }
+            //}
+
+            if (state.GetContactCount() > 0)
             {
-                if (!Crashed)
+                Vector2 normal = state.GetContactLocalNormal(0);
+                //GD.Print("Angle " + toDeg(normal.Angle()));
+
+                //Keep track of the angle of our last collision
+                lastCollisionUpright = ShipIsUpright(normal);
+            }
+
+
+            //Collision logic
+            var newVelocity = LinearVelocity.Length();
+            var speedChange = lastVelocity - newVelocity;
+
+            //Hitting the feet straight on is stronger than angled
+            if (lastCollisionUpright) {
+                if (speedChange > 60)
                 {
+                    GD.Print("Using higher crash speed.");
                     Crash();
                 }
             }
+            else
+            {
+                if (speedChange > 30)
+                {
+                    GD.Print("Using lower crash speed.");
+                    Crash();
+                }
+            }
+            lastVelocity = newVelocity;
+
         }
+    }
+
+    //Not using signals anymore for detecting collisions with terrain
+
+    //public void _on_body_entered(Node other)
+    //{
+    //    if (other is Terrain terrain)
+    //    {
+    //        if (LinearVelocity.Length() > crashSpeed || !ShipIsUpright() )
+    //        {
+    //            if (!Crashed)
+    //            {
+    //                //Crash();
+    //            }
+    //        }
+    //    }
+    //}
+
+    //Check if the ship is within some degrees of a normal, default of up
+    private bool ShipIsUpright(Vector2? normal = null)
+    {
+        var effectiveNormal = normal ?? Vector2.Up;
+        var normalVectorAngleOffset = toDeg(effectiveNormal.AngleTo(Vector2.Up));
+
+        //GD.Print("Normal is " + normalVectorAngleOffset + " collision angle is : " + Math.Abs(RotationDegrees + normalVectorAngleOffset));
+
+        if(Math.Abs(RotationDegrees + normalVectorAngleOffset) > 70 )
+        {
+            return false;
+        }   
+        return true;
+    }
+
+    private double toDeg(float rad)
+    {
+        return rad * (180 / Math.PI);
     }
 
     private void Crash()
     {
-        Crashed = true;
-        //You lose
-        //GetTree().Quit();
+        if (!Crashed)
+        {
+            Crashed = true;
 
-        //Make myself invisible
-        Visible = false;
-        //Spawn an explosion object
+            //Make myself invisible
+            Visible = false;
 
-        SpawnLanderPieces(new Vector2(0, 0));
+            //Spawn an explosion object
+            SpawnLanderPieces(new Vector2(0, 0));
 
-        //Show game over screen
-        GameManager.GetInstance().GameOver();
+            //Show game over screen
+            GameManager.GetInstance().GameOver();
+        }
     }
 
     private void EndGame()
     {
         GameManager.GetInstance().GameOver();
+        //SetPhysicsProcess(false);
     }
 
     private void SpawnLanderPieces(Vector2 offset)

@@ -67,7 +67,7 @@ public class UI : Control
 		velocity = lander.LinearVelocity.Length().ToString("0");
 		fuel = lander.Fuel.ToString();
 		height = lander.Height;
-		score = lander.Score.ToString();
+		score = (lander.Score/10).ToString();
 
 		Update();
     }

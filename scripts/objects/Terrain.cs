@@ -23,12 +23,14 @@ public class Terrain : StaticBody2D
     {
         Random random = new Random();
 
-        int mapSize = 1000;
+        int mapSize = 2000;
 
+        //Map is mirrored at 0
         terrainPoints = new Vector2[mapSize];
-        float startX = -1000;
+        float startX = -300f;
         float start = 100f;
         double delta = 10;
+        float maxHeight = 600f;
 
         for (int i = 0; i < terrainPoints.Length; i++)  
         {
@@ -52,6 +54,10 @@ public class Terrain : StaticBody2D
                     delta *= 6;
                 }
                 start = (float)(start + delta);
+                if(start * scale > maxHeight)
+                {
+                    start = maxHeight / scale;
+                }
                 terrainPoints[i] = new Vector2(scale * (startX + i * 10), scale * start);
             }
         }
