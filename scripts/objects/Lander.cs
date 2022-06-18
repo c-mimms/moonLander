@@ -30,21 +30,29 @@ public class Lander : RigidBody2D
     
     //Physics settings
     private Vector2 _thrust = new Vector2(0, -250);
-    private float _torque = 2000;
-
+    private float _torque = 1000;
 
     //Historical physics 
-
     public float lastVelocity;
     public bool lastCollisionUpright = false;
 
     //Model properties
-    public int Fuel { get; internal set; }
+    public int Fuel { get; internal set; } = 1000;
+    private int stabilizerFuelUse = 1;
+    private int thrustFuelUse = 2;
+
     public bool Crashed = false;
     public bool Landed = false;
-    private int crashSpeed = 30;
-    public int Height { get; internal set; }
+    private int crashSpeed = 10;
+    private int badLandingSpeed = 60;
+
+    public int Height { get; internal set; } = 600;
+
+    //Score variables
     public int Score = 100000;
+    public int scoreChange = 4;
+    public int scoreScale = 100;
+
     public Lander()
     {
         GameManager.GetInstance().RegisterLander(this);
@@ -71,36 +79,6 @@ public class Lander : RigidBody2D
         }
     }
 
-    public override void _Draw()
-    {
-        foreach (var line in shuttle)
-        {
-            DrawPolyline(line.ToArray(), white, width, true);
-        }
-        if (thrust_visible)
-        {
-            foreach (var line in fire)
-            {
-                DrawPolyline(line.ToArray(), fireColor, width, true);
-            }
-        }
-        if (leftThrustVisible)
-        {
-            foreach (var line in leftFire)
-            {
-                DrawPolyline(line.ToArray(), white, width, true);
-            }
-        }
-
-        if (rightThrustVisible)
-        {
-            foreach (var line in rightFire)
-            {
-                DrawPolyline(line.ToArray(), white, width, true);
-            }
-        }
-    }
-
     public override void _Ready()
     {
         if (!Engine.EditorHint)
@@ -110,10 +88,6 @@ public class Lander : RigidBody2D
             //Set initial conditions
             LinearVelocity = new Vector2(100, 0);
             lastVelocity = LinearVelocity.Length();
-            Fuel = 1000;
-            Height = 100;
-            Crashed = false;
-
         }
     }
 
@@ -124,7 +98,7 @@ public class Lander : RigidBody2D
 
         if (!Crashed && !Landed)
         {
-            Score -= 1;
+            Score -= scoreChange;
         }
         if (!Engine.EditorHint)
         {
@@ -208,7 +182,7 @@ public class Lander : RigidBody2D
             {
                 AppliedForce = _thrust.Rotated(Rotation);
                 thrust_visible = true;
-                Fuel -= 1;
+                Fuel -= thrustFuelUse;
                 Update();
             }
             else
@@ -223,7 +197,7 @@ public class Lander : RigidBody2D
             if (Input.IsActionPressed("right") && Fuel > 0) {
                 leftThrustVisible = true;
                 rotationDir += 1;
-                Fuel -= 1;
+                Fuel -= stabilizerFuelUse;
                 Update();
             } else {
                 leftThrustVisible = false;
@@ -232,7 +206,7 @@ public class Lander : RigidBody2D
 
             if (Input.IsActionPressed("left") && Fuel > 0) {
                 rightThrustVisible = true;
-                Fuel -= 1;
+                Fuel -= stabilizerFuelUse;
                 rotationDir -= 1;
                 Update();
             } else
@@ -278,7 +252,7 @@ public class Lander : RigidBody2D
 
             //Hitting the feet straight on is stronger than angled
             if (lastCollisionUpright) {
-                if (speedChange > 60)
+                if (speedChange > badLandingSpeed)
                 {
                     GD.Print("Using higher crash speed.");
                     Crash();
@@ -286,7 +260,7 @@ public class Lander : RigidBody2D
             }
             else
             {
-                if (speedChange > 30)
+                if (speedChange > crashSpeed)
                 {
                     GD.Print("Using lower crash speed.");
                     Crash();
@@ -339,6 +313,8 @@ public class Lander : RigidBody2D
         {
             Crashed = true;
 
+            Score = 0;
+
             //Make myself invisible
             Visible = false;
 
@@ -370,6 +346,37 @@ public class Lander : RigidBody2D
             //piece.AngularVelocity = AngularVelocity;
             Node parent = GetParent();
             parent.CallDeferred("add_child", piece);
+        }
+    }
+
+
+    public override void _Draw()
+    {
+        foreach (var line in shuttle)
+        {
+            DrawPolyline(line.ToArray(), white, width, true);
+        }
+        if (thrust_visible)
+        {
+            foreach (var line in fire)
+            {
+                DrawPolyline(line.ToArray(), fireColor, width, true);
+            }
+        }
+        if (leftThrustVisible)
+        {
+            foreach (var line in leftFire)
+            {
+                DrawPolyline(line.ToArray(), white, width, true);
+            }
+        }
+
+        if (rightThrustVisible)
+        {
+            foreach (var line in rightFire)
+            {
+                DrawPolyline(line.ToArray(), white, width, true);
+            }
         }
     }
 
