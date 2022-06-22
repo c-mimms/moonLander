@@ -27,6 +27,8 @@ public class Lander : RigidBody2D
     private bool thrust_visible = false;
     private bool leftThrustVisible = false;
     private bool rightThrustVisible = false;
+    private int prevImageBitmask = 0;
+
     
     //Physics settings
     private Vector2 _thrust = new Vector2(0, -250);
@@ -45,6 +47,7 @@ public class Lander : RigidBody2D
     public bool Landed = false;
     private int crashSpeed = 10;
     private int badLandingSpeed = 60;
+    private int maxTilt = 45; //Max angle before ship is not considered upright for collision purposes
 
     public int Height { get; internal set; } = 600;
 
@@ -172,6 +175,9 @@ public class Lander : RigidBody2D
     {
         if (!Engine.EditorHint)
         {
+            //Reset bitmask for redrawing
+            int drawingBitmask = 0;
+
             //Measure distance above surface
             SetDistanceAboveGround();
 
@@ -183,13 +189,13 @@ public class Lander : RigidBody2D
                 AppliedForce = _thrust.Rotated(Rotation);
                 thrust_visible = true;
                 Fuel -= thrustFuelUse;
-                Update();
+                drawingBitmask ^= 1;
             }
             else
             {
                 AppliedForce = new Vector2();
                 thrust_visible = false;
-                Update();
+                //Refactor to only update if actually changed
             }
 
             var rotationDir = 0;
@@ -198,43 +204,24 @@ public class Lander : RigidBody2D
                 leftThrustVisible = true;
                 rotationDir += 1;
                 Fuel -= stabilizerFuelUse;
-                Update();
+                drawingBitmask ^= 2;
             } else {
                 leftThrustVisible = false;
-                Update();
             }
 
             if (Input.IsActionPressed("left") && Fuel > 0) {
                 rightThrustVisible = true;
                 Fuel -= stabilizerFuelUse;
                 rotationDir -= 1;
-                Update();
+                drawingBitmask ^= 4;
             } else
             {
                 rightThrustVisible= false;
-                Update();
             }
 
+
+
             this.AppliedTorque = rotationDir * _torque;
-
-
-            //We don't need to check collisions if we just trust the physics engine and check if our speed changed by a lot
-            //But we're checking them here so we can tell the relative between the ship and the ground
-            //if (GetCollidingBodies().Count > 0)
-            //{
-            //    //GD.Print("Im touching bodies : " + state.GetContactCount() + " and " + GetCollidingBodies().Count);
-            //    if (GetCollidingBodies()[0] is Terrain terrain)
-            //    {
-            //        if (state.GetContactCount() > 0)
-            //        {
-            //            Vector2 normal = state.GetContactLocalNormal(0);
-            //            //GD.Print("Angle " + toDeg(normal.Angle()));
-
-            //            //Keep track of the angle of our last collision
-            //            lastCollisionUpright = ShipIsUpright(normal);
-            //        }
-            //    }
-            //}
 
             if (state.GetContactCount() > 0)
             {
@@ -243,6 +230,8 @@ public class Lander : RigidBody2D
 
                 //Keep track of the angle of our last collision
                 lastCollisionUpright = ShipIsUpright(normal);
+                //GD.Print("Ship is upright : " + lastCollisionUpright);
+
             }
 
 
@@ -268,24 +257,15 @@ public class Lander : RigidBody2D
             }
             lastVelocity = newVelocity;
 
+            //Redraw if drawing bitmask changed
+            if (drawingBitmask != prevImageBitmask)
+            {
+                Update();
+                prevImageBitmask = drawingBitmask;
+            }
+
         }
     }
-
-    //Not using signals anymore for detecting collisions with terrain
-
-    //public void _on_body_entered(Node other)
-    //{
-    //    if (other is Terrain terrain)
-    //    {
-    //        if (LinearVelocity.Length() > crashSpeed || !ShipIsUpright() )
-    //        {
-    //            if (!Crashed)
-    //            {
-    //                //Crash();
-    //            }
-    //        }
-    //    }
-    //}
 
     //Check if the ship is within some degrees of a normal, default of up
     private bool ShipIsUpright(Vector2? normal = null)
@@ -295,7 +275,7 @@ public class Lander : RigidBody2D
 
         //GD.Print("Normal is " + normalVectorAngleOffset + " collision angle is : " + Math.Abs(RotationDegrees + normalVectorAngleOffset));
 
-        if(Math.Abs(RotationDegrees + normalVectorAngleOffset) > 70 )
+        if(Math.Abs(RotationDegrees + normalVectorAngleOffset) > maxTilt)
         {
             return false;
         }   
