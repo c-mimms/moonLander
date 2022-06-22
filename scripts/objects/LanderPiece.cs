@@ -39,11 +39,10 @@ public class LanderPiece : RigidBody2D
         Vector2 dirVec = end - start;
         float recLen = dirVec.Length();
         float recRot = dirVec.Angle();
-        CollisionShape2D collisionShape = new CollisionShape2D();
 
         RectangleShape2D circleShape = new RectangleShape2D();
         circleShape.Extents = new Vector2(recLen / 2, 0.5f);
-        collisionShape = new CollisionShape2D
+        CollisionShape2D collisionShape = new CollisionShape2D
         {
             Shape = circleShape
         };

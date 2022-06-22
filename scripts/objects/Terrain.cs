@@ -23,9 +23,8 @@ public class Terrain : StaticBody2D
     {
         Random random = new Random();
 
-        int mapSize = 2000;
+        int mapSize = 500;
 
-        //Map is mirrored at 0
         terrainPoints = new Vector2[mapSize];
         float startX = -300f;
         float start = 100f;

@@ -33,28 +33,34 @@ public class Lander : RigidBody2D
     //Physics settings
     private Vector2 _thrust = new Vector2(0, -250);
     private float _torque = 1000;
+    private Vector2 forceToApply = new Vector2();
+    private int rotationDir = 0;
 
     //Historical physics 
     public float lastVelocity;
     public bool lastCollisionUpright = false;
 
     //Model properties
-    public int Fuel { get; internal set; } = 1000;
-    private int stabilizerFuelUse = 1;
-    private int thrustFuelUse = 2;
+    public float Fuel { get; internal set; } = 1000;
+    private int stabilizerFuelUse = 2; //per second
+    private int thrustFuelUse = 4; //per second
 
     public bool Crashed = false;
     public bool Landed = false;
+    private int landedSpeed = 5;
     private int crashSpeed = 10;
     private int badLandingSpeed = 60;
     private int maxTilt = 45; //Max angle before ship is not considered upright for collision purposes
 
     public int Height { get; internal set; } = 600;
+    private float heightUpdateTime = 0;
+    private int heightUpdateFrequency = 10; //times per second
+
 
     //Score variables
-    public int Score = 100000;
-    public int scoreChange = 4;
-    public int scoreScale = 100;
+    public float Score = 10000;
+    public int scoreChange = 40; //per second
+    public int scoreScale = 10;
 
     public Lander()
     {
@@ -101,10 +107,19 @@ public class Lander : RigidBody2D
 
         if (!Crashed && !Landed)
         {
-            Score -= scoreChange;
+            Score -= scoreChange*delta;
         }
         if (!Engine.EditorHint)
         {
+            heightUpdateTime += delta;
+            if(heightUpdateTime > 1 / heightUpdateFrequency)
+            {
+                //Measure distance above surface
+                SetDistanceAboveGround();
+
+                //Check if we're in landing zone
+                CheckIfLanded();
+            }
 
             //Camera logic
             //if we're moving fast zoom out more, if we get close to the ground zoom in more
@@ -125,34 +140,151 @@ public class Lander : RigidBody2D
                 GC.Collect();
                 GD.Print("Quit");
                 GetTree().Quit();
+                PrintStrayNodes();
+            }
+
+
+
+            //Reset bitmask for redrawing
+            int drawingBitmask = 0;
+
+            if (Input.IsActionPressed("up") && Fuel > 0)
+            {
+                forceToApply = _thrust.Rotated(Rotation);
+                thrust_visible = true;
+                Fuel -= thrustFuelUse * delta;
+                drawingBitmask ^= 1;
+            }
+            else
+            {
+                forceToApply = new Vector2();
+                thrust_visible = false;
+            }
+
+            rotationDir = 0;
+
+            if (Input.IsActionPressed("right") && Fuel > 0)
+            {
+                leftThrustVisible = true;
+                rotationDir += 1;
+                Fuel -= stabilizerFuelUse * delta;
+                drawingBitmask ^= 2;
+            }
+            else
+            {
+                leftThrustVisible = false;
+            }
+
+            if (Input.IsActionPressed("left") && Fuel > 0)
+            {
+                rightThrustVisible = true;
+                Fuel -= stabilizerFuelUse * delta;
+                rotationDir -= 1;
+                drawingBitmask ^= 4;
+            }
+            else
+            {
+                rightThrustVisible = false;
+            }
+
+
+            //Redraw if drawing bitmask changed
+            if (drawingBitmask != prevImageBitmask)
+            {
+                Update();
+                prevImageBitmask = drawingBitmask;
+            }
+
+
+            //Collision logic
+            var newVelocity = LinearVelocity.Length();
+            var speedChange = lastVelocity - newVelocity;
+
+            //Hitting the feet straight on is stronger than angled
+            if (lastCollisionUpright)
+            {
+                if (speedChange > badLandingSpeed)
+                {
+                    GD.Print("Using higher crash speed.");
+                    Crash();
+                }
+            }
+            else
+            {
+                if (speedChange > crashSpeed)
+                {
+                    GD.Print("Using lower crash speed.");
+                    Crash();
+                }
+            }
+            lastVelocity = newVelocity;
+        }
+    }
+
+    public override void _IntegrateForces(Physics2DDirectBodyState state)
+    {
+        if (!Engine.EditorHint)
+        {
+            this.AppliedTorque = rotationDir * _torque;
+            this.AppliedForce = forceToApply;
+
+            if (state.GetContactCount() > 0)
+            {
+                Vector2 normal = state.GetContactLocalNormal(0);
+                //GD.Print("Angle " + toDeg(normal.Angle()));
+
+                //Keep track of the angle of our last collision
+                lastCollisionUpright = ShipIsUpright(normal);
+                //GD.Print("Ship is upright : " + lastCollisionUpright);
+
             }
         }
     }
 
     private void CheckIfLanded()
     {
-        // use global coordinates, not local to node
+        //use global coordinates, not local to node
         var spaceState = GetWorld2d().DirectSpaceState;
-        var collides_zone = spaceState.IntersectRay(Position, Position + new Vector2(0, 21), collideWithAreas: true, collideWithBodies: false);
+        var collides_zone = spaceState.IntersectRay(Position, Position + new Vector2(0, 20), collisionLayer :2, collideWithAreas: true, collideWithBodies: false);
         if (collides_zone.Count > 0)
         {
             object collided = collides_zone["collider"];
-            GD.Print("Collided with " + collided.GetType().Name);
+            GD.Print("Collided with " + collided.GetType().Name +  " " + Score);
 
             //Ensure we haven't crashed or already landed, and speed is low
-            if (collided is LandingZone zone && !Crashed && !Landed && LinearVelocity.Length() < 5)
+            if (collided is LandingZone zone && !Crashed && !Landed && LinearVelocity.Length() < landedSpeed)
             {
-                Landed = true;
-                Score = Score * zone.multiplier;
-                EndGame();
+                if (Math.Abs(zone.Position.y - Position.y) < 30)
+                {
+                    Landed = true;
+                    Score *= zone.multiplier;
+                    EndGame();
+                }
             }
         }
+
+
+        //if (LinearVelocity.LengthSquared() < 2)
+        //{
+        //    // use global coordinates, not local to node
+        //    var spaceState = GetWorld2d().DirectSpaceState;
+        //    var collides_zone = spaceState.in(Position, collisionLayer: 10, collideWithAreas: true);
+        //    if (collides_zone.Count > 0)
+        //    {
+        //        object collided =((Dictionary)collides_zone[0])["collider"];
+        //        if (collided is LandingZone zone)
+        //        {
+        //            Landed = true;
+        //            Score *= zone.multiplier;
+        //            EndGame();
+        //        }
+        //    }
+        //}
     }
 
     private void SetDistanceAboveGround()
     {
         var spaceState = GetWorld2d().DirectSpaceState;
-
 
         var result = spaceState.IntersectRay(Position, Position + new Vector2(0, 2000), new Godot.Collections.Array { this });
         if (result.Count > 0)
@@ -171,101 +303,6 @@ public class Lander : RigidBody2D
         }
     }
 
-    public override void _IntegrateForces(Physics2DDirectBodyState state)
-    {
-        if (!Engine.EditorHint)
-        {
-            //Reset bitmask for redrawing
-            int drawingBitmask = 0;
-
-            //Measure distance above surface
-            SetDistanceAboveGround();
-
-            //Check if we're in landing zone
-            CheckIfLanded();
-
-            if (Input.IsActionPressed("up") && Fuel > 0)
-            {
-                AppliedForce = _thrust.Rotated(Rotation);
-                thrust_visible = true;
-                Fuel -= thrustFuelUse;
-                drawingBitmask ^= 1;
-            }
-            else
-            {
-                AppliedForce = new Vector2();
-                thrust_visible = false;
-                //Refactor to only update if actually changed
-            }
-
-            var rotationDir = 0;
-        
-            if (Input.IsActionPressed("right") && Fuel > 0) {
-                leftThrustVisible = true;
-                rotationDir += 1;
-                Fuel -= stabilizerFuelUse;
-                drawingBitmask ^= 2;
-            } else {
-                leftThrustVisible = false;
-            }
-
-            if (Input.IsActionPressed("left") && Fuel > 0) {
-                rightThrustVisible = true;
-                Fuel -= stabilizerFuelUse;
-                rotationDir -= 1;
-                drawingBitmask ^= 4;
-            } else
-            {
-                rightThrustVisible= false;
-            }
-
-
-
-            this.AppliedTorque = rotationDir * _torque;
-
-            if (state.GetContactCount() > 0)
-            {
-                Vector2 normal = state.GetContactLocalNormal(0);
-                //GD.Print("Angle " + toDeg(normal.Angle()));
-
-                //Keep track of the angle of our last collision
-                lastCollisionUpright = ShipIsUpright(normal);
-                //GD.Print("Ship is upright : " + lastCollisionUpright);
-
-            }
-
-
-            //Collision logic
-            var newVelocity = LinearVelocity.Length();
-            var speedChange = lastVelocity - newVelocity;
-
-            //Hitting the feet straight on is stronger than angled
-            if (lastCollisionUpright) {
-                if (speedChange > badLandingSpeed)
-                {
-                    GD.Print("Using higher crash speed.");
-                    Crash();
-                }
-            }
-            else
-            {
-                if (speedChange > crashSpeed)
-                {
-                    GD.Print("Using lower crash speed.");
-                    Crash();
-                }
-            }
-            lastVelocity = newVelocity;
-
-            //Redraw if drawing bitmask changed
-            if (drawingBitmask != prevImageBitmask)
-            {
-                Update();
-                prevImageBitmask = drawingBitmask;
-            }
-
-        }
-    }
 
     //Check if the ship is within some degrees of a normal, default of up
     private bool ShipIsUpright(Vector2? normal = null)

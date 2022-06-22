@@ -14,6 +14,9 @@ public class UI : Control
 	bool gameStart = true;
 	bool gameOver = false;
 
+	float updateTime = 0;
+	float updateFrequency = 8; //4 times a second
+
 	//Drawing variables
 	private DynamicFont font = new DynamicFont();
 	private Vector2 textOffset = new Vector2(50, 50);
@@ -63,12 +66,18 @@ public class UI : Control
     public override void _Process(float delta)
     {
         base._Process(delta);
+		updateTime += delta;
 
-		velocity = lander.LinearVelocity.Length().ToString("0");
-		fuel = lander.Fuel.ToString();
-		height = lander.Height;
-		score = (lander.Score/lander.scoreScale).ToString();
+		if(updateTime > 1 / updateFrequency)
+        {
+			updateTime = 0;
 
-		Update();
+			velocity = lander.LinearVelocity.Length().ToString("0");
+			fuel = Math.Max((int)lander.Fuel, 0).ToString();
+			height = lander.Height;
+			score = ((int)(lander.Score / lander.scoreScale)).ToString();
+
+			Update();
+		}
     }
 }

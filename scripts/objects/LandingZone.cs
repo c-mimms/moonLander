@@ -19,6 +19,7 @@ class LandingZone : Area2D
     {
         Position = pos;
         this.scale = scale;
+        this.CollisionLayer = 2;
 
         //Max multiplier 10?
         Random random = new Random();
@@ -39,8 +40,8 @@ class LandingZone : Area2D
         font.FontData = (DynamicFontData)GD.Load("res://fonts/vector.ttf");
         font.Size = 20;
         CollisionShape2D zone = new CollisionShape2D();
-        CircleShape2D zoneArea = new CircleShape2D();
-        zoneArea.Radius = 25;
+        RectangleShape2D zoneArea = new RectangleShape2D();
+        zoneArea.Extents = new Vector2(45, 5f);
         zone.Position = new Vector2(45f, 0);
         zone.Shape = zoneArea;
         //this.Connect("body_entered", this, "NotifyLander");
